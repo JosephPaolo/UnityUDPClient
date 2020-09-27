@@ -12,10 +12,13 @@ public class NetworkMan : MonoBehaviour {
     [SerializeField] private bool bDebug = true;
     [SerializeField] private bool bVerboseDebug = false;
 
-    [SerializeField] private Material cubeColorMatRef;
-    [SerializeField] private GameObject clientCubeRef;
+    //[SerializeField] private Material cubeColorMatRef;
+    //[SerializeField] private GameObject localClientCubeRef;
+
+    [SerializeField] private GameObject clientCubePrefab;
 
     private Dictionary<string, GameObject> playerReferences;
+    private Queue<string> dataQueue; //data is queued so they are only processed once chronologically
 
     public Message latestMessage;
     public GameState lastestGameState;
@@ -28,6 +31,7 @@ public class NetworkMan : MonoBehaviour {
 
         udp = new UdpClient();
         playerReferences = new Dictionary<string, GameObject>();
+        dataQueue = new Queue<string>();
 
         if (bDebug){ Debug.Log("[Notice] Client connecting to Server...");}
         udp.Connect("localhost",12345);
@@ -71,7 +75,7 @@ public class NetworkMan : MonoBehaviour {
 
     [Serializable]
     public class NewPlayer {
-        
+        public Player player;
     }
 
     [Serializable]
@@ -91,6 +95,7 @@ public class NetworkMan : MonoBehaviour {
         
         // do what you'd like with `message` here:
         string returnData = Encoding.ASCII.GetString(message);
+        dataQueue.Enqueue(returnData);
         if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Received Data: " + returnData); }
         
         latestMessage = JsonUtility.FromJson<Message>(returnData);
@@ -98,21 +103,10 @@ public class NetworkMan : MonoBehaviour {
             switch(latestMessage.cmd){
                 case commands.NEW_CLIENT:
                     if (bDebug){ Debug.Log("[Notice] Client received command: NEW_CLIENT");}
-
                     break;
                 case commands.UPDATE:
                     if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Client received command: UPDATE"); }
                     lastestGameState = JsonUtility.FromJson<GameState>(returnData);
-
-                    //Debug.Log("lastestGameState.players: " + lastestGameState.players);
-                    //Debug.Log("lastestGameState.players[0].color: " + lastestGameState.players[0].color);
-                    //Color myColor = new Color (lastestGameState.players[0].color.R,lastestGameState.players[0].color.G,lastestGameState.players[0].color.B,1);
-                    //string mystring = latestMessage['color']
-                    //UpdateClientCubeColor(new Color (lastestGameState.players[0].color.R,lastestGameState.players[0].color.G,lastestGameState.players[0].color.B,1)); 
-                    //UpdateClientCubeColor(lastestGameState.players[0].color.R,lastestGameState.players[0].color.G,lastestGameState.players[0].color.B);
-                    //UpdateClientCubeColor();
-                    //clientCubeRef.GetComponent<Renderer>().material.color = new Color (lastestGameState.players[0].color.R,lastestGameState.players[0].color.G,lastestGameState.players[0].color.B,1);
-                    //cubeColorMatRef.SetColor("_Color", new Color (lastestGameState.players[0].color.R,lastestGameState.players[0].color.G,lastestGameState.players[0].color.B,1));
                     break;
                 default:
                     Debug.LogError("[Error] Client received invalid command enum from message.");
@@ -135,21 +129,42 @@ public class NetworkMan : MonoBehaviour {
     void SpawnPlayers() {
         //if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Spawning Players."); }
 
+        //Only process this function if there is data in queue
+        if (dataQueue.Count <= 0) {
+            return;
+        }
+        //This function only processes new client commands
+        if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd != commands.NEW_CLIENT) {
+            return;
+        }
+
+        Player newPlayer = JsonUtility.FromJson<NewPlayer>(dataQueue.Peek()).player;
+
+        GameObject newObj = Instantiate(clientCubePrefab, Vector3.zero, Quaternion.identity);
+        newObj.GetComponent<RemotePlayerData>().id = newPlayer.id;
+        playerReferences.Add(newPlayer.id, newObj);
+        dataQueue.Dequeue();
+        Debug.Log("[Notice] Player " + newPlayer.id + " has entered.");
     }
 
     //The client loops through all the currently connected players and updates the player game object properties (color, network id). (Implementation Missing) 
     void UpdatePlayers() {
-        if (lastestGameState.players.Length <= 0) {
+        if (playerReferences.Count <= 0) {
             //No players yet, client must be set up first
             return;
         }
-        if (!clientCubeRef) {
-            Debug.LogError("[Error] clientCubeRef reference not found! Aborting player update.");
-            return;
+
+        foreach (Player player in lastestGameState.players) {
+            playerReferences[player.id].GetComponent<Renderer>().material.color = new Color (player.color.R,player.color.G,player.color.B,1);
         }
 
+
+        //foreach (KeyValuePair<string, GameObject> player in playerReferences) {
+        //    player.Value.GetComponent<Renderer>().material.color = new Color (0,0,0,1);
+        //}
+
         //if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Updating Player Colors."); }
-        clientCubeRef.GetComponent<Renderer>().material.color = new Color (lastestGameState.players[0].color.R,lastestGameState.players[0].color.G,lastestGameState.players[0].color.B,1);
+        //localClientCubeRef.GetComponent<Renderer>().material.color = new Color (lastestGameState.players[0].color.R,lastestGameState.players[0].color.G,lastestGameState.players[0].color.B,1);
     }
 
     //When a player is dropped, the client destroys the player’s game object. (Implementation Missing)
