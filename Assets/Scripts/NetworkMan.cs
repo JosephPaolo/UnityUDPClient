@@ -86,6 +86,11 @@ public class NetworkMan : MonoBehaviour {
     }
 
     [Serializable]
+    public class DroppedPlayer {
+        public Player player;
+    }
+
+    [Serializable]
     public class GameState {
         public Player[] players;
     }
@@ -105,31 +110,31 @@ public class NetworkMan : MonoBehaviour {
         dataQueue.Enqueue(returnData);
         if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Received Data: " + returnData); }
         
-        latestMessage = JsonUtility.FromJson<Message>(returnData);
-        try{
-            switch(latestMessage.cmd){
-                case commands.NEW_CLIENT:
-                    if (bDebug){ Debug.Log("[Notice] Client received command: NEW_CLIENT!");}
-                    break;
-                case commands.CLIENT_LIST:
-                    if (bDebug){ Debug.Log("[Notice] Client received command: CLIENT_LIST!");}
-                    break;
-                case commands.DROP_CLIENT:
-                    if (bDebug){ Debug.Log("[Notice] Client received command: DROP_CLIENT!");}
-                    break;
-                case commands.UPDATE:
-                    if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Client received command: UPDATE"); }
-                    lastestGameState = JsonUtility.FromJson<GameState>(returnData);
-                    break;
-                default:
-                    Debug.LogError("[Error] Client received invalid command enum from message.");
-                    break;
-            }
-        }
-        catch (Exception e){
-            Debug.LogError("[Exception] Failed to receive message from server. " + e.ToString());
-            //Debug.Log(e.ToString());
-        }
+        //latestMessage = JsonUtility.FromJson<Message>(returnData);
+        //try{
+        //    switch(latestMessage.cmd){
+        //        case commands.NEW_CLIENT:
+        //            if (bDebug){ Debug.Log("[Notice] Client received command: NEW_CLIENT!");}
+        //            break;
+        //        case commands.CLIENT_LIST:
+        //            if (bDebug){ Debug.Log("[Notice] Client received command: CLIENT_LIST!");}
+        //            break;
+        //        case commands.DROP_CLIENT:
+        //            if (bDebug){ Debug.Log("[Notice] Client received command: DROP_CLIENT!");}
+        //            break;
+        //        case commands.UPDATE:
+        //            if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Client received command: UPDATE"); }
+        //            lastestGameState = JsonUtility.FromJson<GameState>(returnData);
+        //            break;
+        //        default:
+        //            Debug.LogError("[Error] Client received invalid command enum from message.");
+        //            break;
+        //    }
+        //}
+        //catch (Exception e){
+        //    Debug.LogError("[Exception] Failed to receive message from server. " + e.ToString());
+        //    //Debug.Log(e.ToString());
+        //}
 
         // schedule the next receive operation once reading is done:
         socket.BeginReceive(new AsyncCallback(OnReceived), socket);
@@ -142,6 +147,10 @@ public class NetworkMan : MonoBehaviour {
     void SpawnPlayers() {
         //if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Spawning Players."); }
 
+        //Cube spawn locations are randomized per client. The positions will not be the same in each client because the positions aren't tracked by the server.
+
+        Vector3 spawnlocation = Vector3.zero; 
+
         //Only process this function if there is data in queue
         if (dataQueue.Count <= 0) {
             return;
@@ -153,7 +162,8 @@ public class NetworkMan : MonoBehaviour {
 
             if (bDebug){ Debug.Log("[Notice] Client received command: NEW_CLIENT");}
             newPlayer = JsonUtility.FromJson<NewPlayer>(dataQueue.Peek()).player;
-            newObj = Instantiate(clientCubePrefab, Vector3.zero, Quaternion.identity);
+            spawnlocation = new Vector3 (UnityEngine.Random.Range(-10.0f, 10.0f),UnityEngine.Random.Range(-4.0f, 4.0f),UnityEngine.Random.Range(4.0f, 24.0f));
+            newObj = Instantiate(clientCubePrefab, spawnlocation, Quaternion.identity);
             newObj.GetComponent<RemotePlayerData>().id = newPlayer.id;
             playerReferences.Add(newPlayer.id, newObj);
             dataQueue.Dequeue();
@@ -170,7 +180,8 @@ public class NetworkMan : MonoBehaviour {
                     continue;
                 }
 
-                otherObj = Instantiate(clientCubePrefab, Vector3.zero, Quaternion.identity);
+                spawnlocation = new Vector3 (UnityEngine.Random.Range(-10.0f, 10.0f),UnityEngine.Random.Range(-4.0f, 4.0f),UnityEngine.Random.Range(4.0f, 24.0f));
+                otherObj = Instantiate(clientCubePrefab, spawnlocation, Quaternion.identity);
                 otherObj.GetComponent<RemotePlayerData>().id = targetPlayer.id;
                 playerReferences.Add(targetPlayer.id, otherObj);
                 if (bDebug) { Debug.Log("[Notice] Implemented connected client to game: " + targetPlayer.id); }
@@ -192,6 +203,7 @@ public class NetworkMan : MonoBehaviour {
         }
 
         lastestGameState = JsonUtility.FromJson<GameState>(dataQueue.Peek());
+
         foreach (Player player in lastestGameState.players) {
             playerReferences[player.id].GetComponent<Renderer>().material.color = new Color (player.color.R,player.color.G,player.color.B,1);
         }
@@ -209,14 +221,18 @@ public class NetworkMan : MonoBehaviour {
         if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd != commands.DROP_CLIENT) {
             return;
         }
-        Player droppedPlayer = JsonUtility.FromJson<Player>(dataQueue.Peek());
+
+        Player droppedPlayer;
+        droppedPlayer = JsonUtility.FromJson<DroppedPlayer>(dataQueue.Peek()).player;
         Debug.Log("[Notice] Player " + droppedPlayer.id + " has left the game.");
 
-        // Destroy the dropped player’s game object. UNTESTED
-        Destroy(playerReferences[droppedPlayer.id]);
-
-        //Remove the dropped player's entry from the dictionary of currently connected players. UNTESTED
-        playerReferences.Remove(droppedPlayer.id);
+        if (playerReferences.ContainsKey(droppedPlayer.id)) {
+            Destroy(playerReferences[droppedPlayer.id]); // Destroy the dropped player’s game object. UNTESTED
+            playerReferences.Remove(droppedPlayer.id); //Remove the dropped player's entry from the dictionary of currently connected players. UNTESTED
+        }
+        else {
+            Debug.LogError("[Error] Invalid key for player address. Skipping Operation.");
+        }
 
         dataQueue.Dequeue();
     }
