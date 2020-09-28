@@ -1,4 +1,9 @@
-﻿using System.Collections;
+﻿/*
+ * Authors: Started by Galal Hassan, modified by Joseph Malibiran
+ * Last Updated: September 28, 2020
+ */
+
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System;
@@ -104,7 +109,10 @@ public class NetworkMan : MonoBehaviour {
         try{
             switch(latestMessage.cmd){
                 case commands.NEW_CLIENT:
-                    if (bDebug){ Debug.Log("[Notice] Client received command: NEW_CLIENT");}
+                    if (bDebug){ Debug.Log("[Notice] Client received command: NEW_CLIENT!");}
+                    break;
+                case commands.CLIENT_LIST:
+                    if (bDebug){ Debug.Log("[Notice] Client received command: CLIENT_LIST!");}
                     break;
                 case commands.UPDATE:
                     if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Client received command: UPDATE"); }
@@ -137,30 +145,36 @@ public class NetworkMan : MonoBehaviour {
         }
         //When a new player is connected, the client adds the details of this player into a list of currently connected players.
         if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd == commands.NEW_CLIENT) {
-            Player newPlayer = JsonUtility.FromJson<NewPlayer>(dataQueue.Peek()).player;
+            GameObject newObj;
+            Player newPlayer;
 
-            GameObject newObj = Instantiate(clientCubePrefab, Vector3.zero, Quaternion.identity);
+            if (bDebug){ Debug.Log("[Notice] Client received command: NEW_CLIENT");}
+            newPlayer = JsonUtility.FromJson<NewPlayer>(dataQueue.Peek()).player;
+            newObj = Instantiate(clientCubePrefab, Vector3.zero, Quaternion.identity);
             newObj.GetComponent<RemotePlayerData>().id = newPlayer.id;
             playerReferences.Add(newPlayer.id, newObj);
             dataQueue.Dequeue();
             Debug.Log("[Notice] Player " + newPlayer.id + " has entered.");
         }
-        //If local user joins a server with clients connected, receive list of clients, and add them to the game. 
-        //else if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd == commands.CLIENT_LIST){
-        //    GameState connectedPlayers = JsonUtility.FromJson<GameState>(dataQueue.Peek());
-        //    GameObject otherObj;
+        //If local user joins a server with clients connected, receive list of clients, and add them to the game.
+        else if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd == commands.CLIENT_LIST) {
+            GameObject otherObj;
+            GameState connectedPlayers = JsonUtility.FromJson<GameState>(dataQueue.Peek());
 
-        //    foreach (Player targetPlayer in connectedPlayers.players) {
-        //        if (!playerReferences.ContainsKey(targetPlayer.id)) { //Check if player isn't already in the game
-        //            otherObj = Instantiate(clientCubePrefab, Vector3.zero, Quaternion.identity);
-        //            otherObj.GetComponent<RemotePlayerData>().id = targetPlayer.id;
-        //            playerReferences.Add(targetPlayer.id, otherObj);
-        //            dataQueue.Dequeue();
-        //            if (bDebug){ Debug.Log("[Notice] Implemented connected client to game: " + targetPlayer.id);}
-        //        }
-        //    }
-        //}
-        
+            if (bDebug) { Debug.Log("[Notice] Client received command: CLIENT_LIST"); }
+            foreach (Player targetPlayer in connectedPlayers.players) {
+                if (playerReferences.ContainsKey(targetPlayer.id)) { //Check if player is already in the game, skip
+                    continue;
+                }
+
+                otherObj = Instantiate(clientCubePrefab, Vector3.zero, Quaternion.identity);
+                otherObj.GetComponent<RemotePlayerData>().id = targetPlayer.id;
+                playerReferences.Add(targetPlayer.id, otherObj);
+                if (bDebug) { Debug.Log("[Notice] Implemented connected client to game: " + targetPlayer.id); }
+            }
+            dataQueue.Dequeue();
+        }
+
     }
 
     //The client loops through all the currently connected players and updates the player game object properties (color, network id). (Implementation Missing) 
