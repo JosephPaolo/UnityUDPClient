@@ -39,7 +39,7 @@ public class NetworkMan : MonoBehaviour {
         dataQueue = new Queue<string>();
 
         if (bDebug){ Debug.Log("[Notice] Client connecting to Server...");}
-        udp.Connect("localhost",12345);
+        udp.Connect("18.224.179.199",12345);
         Byte[] sendBytes = Encoding.ASCII.GetBytes("connect");
         udp.Send(sendBytes, sendBytes.Length);
         udp.BeginReceive(new AsyncCallback(OnReceived), udp);
