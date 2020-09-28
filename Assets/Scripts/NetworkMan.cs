@@ -53,7 +53,9 @@ public class NetworkMan : MonoBehaviour {
 
     public enum commands {
         NEW_CLIENT,
-        UPDATE
+        UPDATE,
+        DROP_CLIENT,
+        CLIENT_LIST
     };
     
     [Serializable]
@@ -133,44 +135,66 @@ public class NetworkMan : MonoBehaviour {
         if (dataQueue.Count <= 0) {
             return;
         }
-        //This function only processes new client commands
-        if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd != commands.NEW_CLIENT) {
-            return;
+        //When a new player is connected, the client adds the details of this player into a list of currently connected players.
+        if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd == commands.NEW_CLIENT) {
+            Player newPlayer = JsonUtility.FromJson<NewPlayer>(dataQueue.Peek()).player;
+
+            GameObject newObj = Instantiate(clientCubePrefab, Vector3.zero, Quaternion.identity);
+            newObj.GetComponent<RemotePlayerData>().id = newPlayer.id;
+            playerReferences.Add(newPlayer.id, newObj);
+            dataQueue.Dequeue();
+            Debug.Log("[Notice] Player " + newPlayer.id + " has entered.");
         }
+        //If local user joins a server with clients connected, receive list of clients, and add them to the game. 
+        //else if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd == commands.CLIENT_LIST){
+        //    GameState connectedPlayers = JsonUtility.FromJson<GameState>(dataQueue.Peek());
+        //    GameObject otherObj;
 
-        Player newPlayer = JsonUtility.FromJson<NewPlayer>(dataQueue.Peek()).player;
-
-        GameObject newObj = Instantiate(clientCubePrefab, Vector3.zero, Quaternion.identity);
-        newObj.GetComponent<RemotePlayerData>().id = newPlayer.id;
-        playerReferences.Add(newPlayer.id, newObj);
-        dataQueue.Dequeue();
-        Debug.Log("[Notice] Player " + newPlayer.id + " has entered.");
+        //    foreach (Player targetPlayer in connectedPlayers.players) {
+        //        if (!playerReferences.ContainsKey(targetPlayer.id)) { //Check if player isn't already in the game
+        //            otherObj = Instantiate(clientCubePrefab, Vector3.zero, Quaternion.identity);
+        //            otherObj.GetComponent<RemotePlayerData>().id = targetPlayer.id;
+        //            playerReferences.Add(targetPlayer.id, otherObj);
+        //            dataQueue.Dequeue();
+        //            if (bDebug){ Debug.Log("[Notice] Implemented connected client to game: " + targetPlayer.id);}
+        //        }
+        //    }
+        //}
+        
     }
 
     //The client loops through all the currently connected players and updates the player game object properties (color, network id). (Implementation Missing) 
     void UpdatePlayers() {
-        if (playerReferences.Count <= 0) {
-            //No players yet, client must be set up first
+        //Only process this function if there is data in queue
+        if (dataQueue.Count <= 0) {
+            return;
+        }
+        //This function only processes update commands
+        if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd != commands.UPDATE) {
             return;
         }
 
+        lastestGameState = JsonUtility.FromJson<GameState>(dataQueue.Peek());
         foreach (Player player in lastestGameState.players) {
             playerReferences[player.id].GetComponent<Renderer>().material.color = new Color (player.color.R,player.color.G,player.color.B,1);
         }
-
-
-        //foreach (KeyValuePair<string, GameObject> player in playerReferences) {
-        //    player.Value.GetComponent<Renderer>().material.color = new Color (0,0,0,1);
-        //}
-
-        //if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Updating Player Colors."); }
-        //localClientCubeRef.GetComponent<Renderer>().material.color = new Color (lastestGameState.players[0].color.R,lastestGameState.players[0].color.G,lastestGameState.players[0].color.B,1);
+        dataQueue.Dequeue();
     }
 
     //When a player is dropped, the client destroys the player’s game object. (Implementation Missing)
     //When a player is dropped, the client removes the player’s entry from the list of currently connected players. (Implementation Missing)
     void DestroyPlayers() {
-        //if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Destroying Players."); }
+        //Only process this function if there is data in queue
+        if (dataQueue.Count <= 0) {
+            return;
+        }
+        //This function only processes drop client commands
+        if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd != commands.DROP_CLIENT) {
+            return;
+        }
+
+
+
 
     }
 
