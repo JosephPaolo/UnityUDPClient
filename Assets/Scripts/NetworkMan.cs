@@ -114,6 +114,9 @@ public class NetworkMan : MonoBehaviour {
                 case commands.CLIENT_LIST:
                     if (bDebug){ Debug.Log("[Notice] Client received command: CLIENT_LIST!");}
                     break;
+                case commands.DROP_CLIENT:
+                    if (bDebug){ Debug.Log("[Notice] Client received command: DROP_CLIENT!");}
+                    break;
                 case commands.UPDATE:
                     if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Client received command: UPDATE"); }
                     lastestGameState = JsonUtility.FromJson<GameState>(returnData);
@@ -154,7 +157,7 @@ public class NetworkMan : MonoBehaviour {
             newObj.GetComponent<RemotePlayerData>().id = newPlayer.id;
             playerReferences.Add(newPlayer.id, newObj);
             dataQueue.Dequeue();
-            Debug.Log("[Notice] Player " + newPlayer.id + " has entered.");
+            Debug.Log("[Notice] Player " + newPlayer.id + " has entered the game.");
         }
         //If local user joins a server with clients connected, receive list of clients, and add them to the game.
         else if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd == commands.CLIENT_LIST) {
@@ -195,8 +198,8 @@ public class NetworkMan : MonoBehaviour {
         dataQueue.Dequeue();
     }
 
-    //When a player is dropped, the client destroys the player’s game object. (Implementation Missing)
-    //When a player is dropped, the client removes the player’s entry from the list of currently connected players. (Implementation Missing)
+    //When a player is dropped, the client destroys the player’s game object. 
+    //When a player is dropped, the client removes the player’s entry from the list of currently connected players. 
     void DestroyPlayers() {
         //Only process this function if there is data in queue
         if (dataQueue.Count <= 0) {
@@ -206,10 +209,16 @@ public class NetworkMan : MonoBehaviour {
         if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd != commands.DROP_CLIENT) {
             return;
         }
+        Player droppedPlayer = JsonUtility.FromJson<Player>(dataQueue.Peek());
+        Debug.Log("[Notice] Player " + droppedPlayer.id + " has left the game.");
 
+        // Destroy the dropped player’s game object. UNTESTED
+        Destroy(playerReferences[droppedPlayer.id]);
 
+        //Remove the dropped player's entry from the dictionary of currently connected players. UNTESTED
+        playerReferences.Remove(droppedPlayer.id);
 
-
+        dataQueue.Dequeue();
     }
 
     void HeartBeat() {

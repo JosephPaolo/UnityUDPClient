@@ -262,12 +262,6 @@ MonoBehaviour:
     type: 3}
   latestMessage:
     cmd: 0
-    player:
-      id: 
-      color:
-        R: 0
-        G: 0
-        B: 0
   lastestGameState:
     players: []
 --- !u!1 &963194225
