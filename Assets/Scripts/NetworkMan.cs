@@ -19,7 +19,7 @@ public class NetworkMan : MonoBehaviour {
 
     //[SerializeField] private Material cubeColorMatRef;
     //[SerializeField] private GameObject localClientCubeRef;
-
+    [SerializeField] private Transform localClientCharacterRef;
     [SerializeField] private GameObject clientCubePrefab;
 
     private Dictionary<string, GameObject> playerReferences;
@@ -32,6 +32,10 @@ public class NetworkMan : MonoBehaviour {
 
     // Start is called before the first frame update
     void Start() {
+        string msgJson;
+        FlagToServer flag = new FlagToServer();
+        Byte[] sendBytes;
+
         if (bDebug){ Debug.Log("[Notice] Setting up client...");}
 
         udp = new UdpClient();
@@ -39,15 +43,23 @@ public class NetworkMan : MonoBehaviour {
         dataQueue = new Queue<string>();
 
         if (bDebug){ Debug.Log("[Notice] Client connecting to Server...");}
-        udp.Connect("18.224.179.199",12345);
-        Byte[] sendBytes = Encoding.ASCII.GetBytes("connect");
+        udp.Connect("localhost",12345);
+
+        //Send flag 'connect' to server
+        flag.flag = NetworkMan.flag.CONNECT;
+        msgJson = JsonUtility.ToJson(flag);
+        //Byte[] sendBytes = Encoding.ASCII.GetBytes("connect");
+        sendBytes = Encoding.ASCII.GetBytes(msgJson);
         udp.Send(sendBytes, sendBytes.Length);
+
         udp.BeginReceive(new AsyncCallback(OnReceived), udp);
         if (bDebug){ Debug.Log("[Notice] Client server connection established.");}
 
         if (bDebug){ Debug.Log("[Notice] Routinely sending Heartbeat.");}
         InvokeRepeating("HeartBeat", 1, 1); // Sends 1 heartbeat message to server every 1 second.
 
+        //if (bDebug){ Debug.Log("[Notice] Routinely sending Coordinates.");}
+        //InvokeRepeating("UploadLocalClientPosition", 0.033f, 1); //Send 1 coordinate message to server every 0.033 second. Essentially 30 times per second.
     }
 
     void OnDestroy() {
@@ -55,29 +67,51 @@ public class NetworkMan : MonoBehaviour {
         udp.Dispose();
     }
 
-
     public enum commands {
         NEW_CLIENT,
         UPDATE,
         DROP_CLIENT,
-        CLIENT_LIST
+        CLIENT_LIST,
+        PONG
     };
-    
+
+    public enum flag {
+        NONE,
+        CONNECT,
+        PING,
+        MESSAGE,
+        COORDS,
+        HEARTBEAT
+    };
+
     [Serializable]
     public class Message {
         public commands cmd;
     }
-    
+
+    [Serializable]
+    public class FlagToServer {
+        public flag flag = flag.NONE;
+    }
+
+    [Serializable]
+    public class MsgToServer {
+        public flag flag = flag.MESSAGE;
+        public string message;
+    }
+
+    [Serializable]
+    public class Coordinates {
+        public float x = 0;
+        public float y = 0;
+        public float z = 0;
+        public flag flag = flag.COORDS;
+    }
+
     [Serializable]
     public class Player {
-        [Serializable]
-        public struct receivedColor{
-            public float R;
-            public float G;
-            public float B;
-        }
         public string id;
-        public receivedColor color;        
+        public Coordinates position;     
     }
 
     [Serializable]
@@ -187,6 +221,11 @@ public class NetworkMan : MonoBehaviour {
                 if (bDebug) { Debug.Log("[Notice] Implemented connected client to game: " + targetPlayer.id); }
             }
             dataQueue.Dequeue();
+
+            Debug.Log("[Notice] Connected players: ");
+            foreach (Player targetPlayer in connectedPlayers.players) {
+                Debug.Log("    " + targetPlayer.id);
+            }
         }
 
     }
@@ -205,7 +244,7 @@ public class NetworkMan : MonoBehaviour {
         lastestGameState = JsonUtility.FromJson<GameState>(dataQueue.Peek());
 
         foreach (Player player in lastestGameState.players) {
-            playerReferences[player.id].GetComponent<Renderer>().material.color = new Color (player.color.R,player.color.G,player.color.B,1);
+            //playerReferences[player.id].GetComponent<Renderer>().material.color = new Color (player.color.R,player.color.G,player.color.B,1);
         }
         dataQueue.Dequeue();
     }
@@ -238,8 +277,36 @@ public class NetworkMan : MonoBehaviour {
     }
 
     void HeartBeat() {
-        if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Sending message to server: hearbeat"); }
-        Byte[] sendBytes = Encoding.ASCII.GetBytes("heartbeat");
+        if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Sending message to server: heartbeat"); }
+        string msgJson;
+        FlagToServer flag = new FlagToServer();
+        Byte[] sendBytes;
+
+        flag.flag = NetworkMan.flag.HEARTBEAT;
+        msgJson = JsonUtility.ToJson(flag);
+
+        //Byte[] sendBytes = Encoding.ASCII.GetBytes("heartbeat");
+        sendBytes = Encoding.ASCII.GetBytes(msgJson);
+        udp.Send(sendBytes, sendBytes.Length);
+
+    }
+
+    //Routinely send the position of local client's character to the server
+    void UploadLocalClientPosition() {
+
+        if (!localClientCharacterRef) {
+            Debug.LogError("[Error] local character ref missing! Aborting upload to server.");
+            return;
+        }
+
+        if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Sending message to server: coordinates " + localClientCharacterRef.position); }
+        Coordinates initialPosition = new Coordinates();
+        initialPosition.x = localClientCharacterRef.position.x;
+        initialPosition.y = localClientCharacterRef.position.y;
+        initialPosition.z = localClientCharacterRef.position.z;
+
+        string posJson = JsonUtility.ToJson(initialPosition);
+        Byte[] sendBytes = Encoding.ASCII.GetBytes(posJson);
         udp.Send(sendBytes, sendBytes.Length);
     }
 
