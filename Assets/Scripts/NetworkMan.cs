@@ -45,18 +45,21 @@ public class NetworkMan : MonoBehaviour {
         if (bDebug){ Debug.Log("[Notice] Client connecting to Server...");}
         udp.Connect("localhost",12345);
 
+        //Debug.Log("udp.ToString(): " + udp.Client.LocalEndPoint);
+
         //Send flag 'connect' to server
-        flag.flag = NetworkMan.flag.CONNECT;
-        msgJson = JsonUtility.ToJson(flag);
+        FlagToServer connectFlag = new FlagToServer();
+        connectFlag.flag = NetworkMan.flag.CONNECT;
+        msgJson = JsonUtility.ToJson(connectFlag);
         //Byte[] sendBytes = Encoding.ASCII.GetBytes("connect");
         sendBytes = Encoding.ASCII.GetBytes(msgJson);
         udp.Send(sendBytes, sendBytes.Length);
 
         udp.BeginReceive(new AsyncCallback(OnReceived), udp);
-        if (bDebug){ Debug.Log("[Notice] Client server connection established.");}
+        if (bDebug){ Debug.Log("[Notice] Client-server connection established; " + udp.Client.LocalEndPoint + "to " + udp.Client.RemoteEndPoint.ToString());}
 
-        if (bDebug){ Debug.Log("[Notice] Routinely sending Heartbeat.");}
-        InvokeRepeating("HeartBeat", 1, 1); // Sends 1 heartbeat message to server every 1 second.
+        //if (bDebug){ Debug.Log("[Notice] Routinely sending Heartbeat.");}
+        //InvokeRepeating("HeartBeat", 1, 1); // Sends 1 heartbeat message to server every 1 second.
 
         //if (bDebug){ Debug.Log("[Notice] Routinely sending Coordinates.");}
         //InvokeRepeating("UploadLocalClientPosition", 0.033f, 1); //Send 1 coordinate message to server every 0.033 second. Essentially 30 times per second.
@@ -110,7 +113,8 @@ public class NetworkMan : MonoBehaviour {
 
     [Serializable]
     public class Player {
-        public string id;
+        public string ip;
+        public string port;
         public Coordinates position;     
     }
 
@@ -143,7 +147,7 @@ public class NetworkMan : MonoBehaviour {
         string returnData = Encoding.ASCII.GetString(message);
         dataQueue.Enqueue(returnData);
         if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Received Data: " + returnData); }
-        
+
         //latestMessage = JsonUtility.FromJson<Message>(returnData);
         //try{
         //    switch(latestMessage.cmd){
@@ -198,10 +202,10 @@ public class NetworkMan : MonoBehaviour {
             newPlayer = JsonUtility.FromJson<NewPlayer>(dataQueue.Peek()).player;
             spawnlocation = new Vector3 (UnityEngine.Random.Range(-10.0f, 10.0f),UnityEngine.Random.Range(-4.0f, 4.0f),UnityEngine.Random.Range(4.0f, 24.0f));
             newObj = Instantiate(clientCubePrefab, spawnlocation, Quaternion.identity);
-            newObj.GetComponent<RemotePlayerData>().id = newPlayer.id;
-            playerReferences.Add(newPlayer.id, newObj);
+            newObj.GetComponent<RemotePlayerData>().id = newPlayer.ip + ":" + newPlayer.port;
+            playerReferences.Add(newPlayer.ip + ":" + newPlayer.port, newObj);
             dataQueue.Dequeue();
-            Debug.Log("[Notice] Player " + newPlayer.id + " has entered the game.");
+            Debug.Log("[Notice] Player " + newPlayer.ip + ":" + newPlayer.port + " has entered the game.");
         }
         //If local user joins a server with clients connected, receive list of clients, and add them to the game.
         else if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd == commands.CLIENT_LIST) {
@@ -210,21 +214,23 @@ public class NetworkMan : MonoBehaviour {
 
             if (bDebug) { Debug.Log("[Notice] Client received command: CLIENT_LIST"); }
             foreach (Player targetPlayer in connectedPlayers.players) {
-                if (playerReferences.ContainsKey(targetPlayer.id)) { //Check if player is already in the game, skip
-                    continue;
-                }
 
-                spawnlocation = new Vector3 (UnityEngine.Random.Range(-10.0f, 10.0f),UnityEngine.Random.Range(-4.0f, 4.0f),UnityEngine.Random.Range(4.0f, 24.0f));
-                otherObj = Instantiate(clientCubePrefab, spawnlocation, Quaternion.identity);
-                otherObj.GetComponent<RemotePlayerData>().id = targetPlayer.id;
-                playerReferences.Add(targetPlayer.id, otherObj);
-                if (bDebug) { Debug.Log("[Notice] Implemented connected client to game: " + targetPlayer.id); }
+                if (playerReferences.ContainsKey(targetPlayer.ip + ":" + targetPlayer.port)) { //Check if player is already in the game, skip
+                    if (bDebug) { Debug.Log("[Notice] Player already in game; skipping."); }
+                }
+                else {
+                    spawnlocation = new Vector3 (UnityEngine.Random.Range(-10.0f, 10.0f),UnityEngine.Random.Range(-4.0f, 4.0f),UnityEngine.Random.Range(4.0f, 24.0f));
+                    otherObj = Instantiate(clientCubePrefab, spawnlocation, Quaternion.identity);
+                    otherObj.GetComponent<RemotePlayerData>().id = targetPlayer.ip + ":" + targetPlayer.port;
+                    playerReferences.Add(targetPlayer.ip + ":" + targetPlayer.port, otherObj);
+                    if (bDebug) { Debug.Log("[Notice] Implemented connected client to game: " + targetPlayer.ip + ":" + targetPlayer.port); }
+                }
             }
             dataQueue.Dequeue();
 
             Debug.Log("[Notice] Connected players: ");
             foreach (Player targetPlayer in connectedPlayers.players) {
-                Debug.Log("    " + targetPlayer.id);
+                Debug.Log("    " + targetPlayer.ip + ":" + targetPlayer.port);
             }
         }
 
@@ -263,11 +269,11 @@ public class NetworkMan : MonoBehaviour {
 
         Player droppedPlayer;
         droppedPlayer = JsonUtility.FromJson<DroppedPlayer>(dataQueue.Peek()).player;
-        Debug.Log("[Notice] Player " + droppedPlayer.id + " has left the game.");
+        Debug.Log("[Notice] Player " + droppedPlayer.ip + ":" + droppedPlayer.port + " has left the game.");
 
-        if (playerReferences.ContainsKey(droppedPlayer.id)) {
-            Destroy(playerReferences[droppedPlayer.id]); // Destroy the dropped player’s game object. UNTESTED
-            playerReferences.Remove(droppedPlayer.id); //Remove the dropped player's entry from the dictionary of currently connected players. UNTESTED
+        if (playerReferences.ContainsKey(droppedPlayer.ip + ":" + droppedPlayer.port)) {
+            Destroy(playerReferences[droppedPlayer.ip + ":" + droppedPlayer.port]); // Destroy the dropped player’s game object. UNTESTED
+            playerReferences.Remove(droppedPlayer.ip + ":" + droppedPlayer.port); //Remove the dropped player's entry from the dictionary of currently connected players. UNTESTED
         }
         else {
             Debug.LogError("[Error] Invalid key for player address. Skipping Operation.");
