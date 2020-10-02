@@ -1,6 +1,6 @@
 ﻿/*
  * Authors: Started by Galal Hassan, modified by Joseph Malibiran
- * Last Updated: September 28, 2020
+ * Last Updated: October 2, 2020
  */
 
 using System.Collections;
@@ -56,13 +56,13 @@ public class NetworkMan : MonoBehaviour {
         udp.Send(sendBytes, sendBytes.Length);
 
         udp.BeginReceive(new AsyncCallback(OnReceived), udp);
-        if (bDebug){ Debug.Log("[Notice] Client-server connection established; " + udp.Client.LocalEndPoint + "to " + udp.Client.RemoteEndPoint.ToString());}
+        if (bDebug){ Debug.Log("[Notice] Client-server connection established from " + udp.Client.LocalEndPoint + " to " + udp.Client.RemoteEndPoint.ToString());}
 
-        //if (bDebug){ Debug.Log("[Notice] Routinely sending Heartbeat.");}
-        //InvokeRepeating("HeartBeat", 1, 1); // Sends 1 heartbeat message to server every 1 second.
+        if (bDebug){ Debug.Log("[Notice] Routinely sending Heartbeat.");}
+        InvokeRepeating("RoutinePing", 1, 1); // Sends 1 heartbeat message to server every 1 second.
 
-        //if (bDebug){ Debug.Log("[Notice] Routinely sending Coordinates.");}
-        //InvokeRepeating("UploadLocalClientPosition", 0.033f, 1); //Send 1 coordinate message to server every 0.033 second. Essentially 30 times per second.
+        if (bDebug){ Debug.Log("[Notice] Routinely sending Coordinates.");}
+        InvokeRepeating("UploadLocalClientPosition", 0.033f, 1); //Send 1 coordinate message to server every 0.033 second. Essentially 30 times per second.
     }
 
     void OnDestroy() {
@@ -115,7 +115,7 @@ public class NetworkMan : MonoBehaviour {
     public class Player {
         public string ip;
         public string port;
-        public Coordinates position;     
+        public Coordinates position;  
     }
 
     [Serializable]
@@ -206,17 +206,26 @@ public class NetworkMan : MonoBehaviour {
             playerReferences.Add(newPlayer.ip + ":" + newPlayer.port, newObj);
             dataQueue.Dequeue();
             Debug.Log("[Notice] Player " + newPlayer.ip + ":" + newPlayer.port + " has entered the game.");
+
+            if (!localClientCharacterRef) { //If reference to local player cube is not present
+                if ( (newPlayer.ip + ":" + newPlayer.port) == udp.Client.LocalEndPoint.ToString()) { //If recently spawned player is local player's cube
+                    Debug.Log("[Notice] Client " + newPlayer.ip + ":" + newPlayer.port + " is local client player; Saving character reference...");
+                    localClientCharacterRef = newObj.transform; //Add reference
+                }
+            }
         }
         //If local user joins a server with clients connected, receive list of clients, and add them to the game.
         else if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd == commands.CLIENT_LIST) {
             GameObject otherObj;
             GameState connectedPlayers = JsonUtility.FromJson<GameState>(dataQueue.Peek());
 
+            
             if (bDebug) { Debug.Log("[Notice] Client received command: CLIENT_LIST"); }
             foreach (Player targetPlayer in connectedPlayers.players) {
 
                 if (playerReferences.ContainsKey(targetPlayer.ip + ":" + targetPlayer.port)) { //Check if player is already in the game, skip
-                    if (bDebug) { Debug.Log("[Notice] Player already in game; skipping."); }
+                    if (bDebug) { Debug.Log("[Notice] Player already in game; skipping..."); }
+
                 }
                 else {
                     spawnlocation = new Vector3 (UnityEngine.Random.Range(-10.0f, 10.0f),UnityEngine.Random.Range(-4.0f, 4.0f),UnityEngine.Random.Range(4.0f, 24.0f));
@@ -297,11 +306,23 @@ public class NetworkMan : MonoBehaviour {
 
     }
 
+    void RoutinePing() {
+        if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Pinging server..."); }
+        string msgJson;
+        FlagToServer newFlag = new FlagToServer();
+        Byte[] sendBytes;
+
+        newFlag.flag = flag.PING;
+        msgJson = JsonUtility.ToJson(newFlag);
+        sendBytes = Encoding.ASCII.GetBytes(msgJson);
+        udp.Send(sendBytes, sendBytes.Length);
+    }
+
     //Routinely send the position of local client's character to the server
     void UploadLocalClientPosition() {
 
         if (!localClientCharacterRef) {
-            Debug.LogError("[Error] local character ref missing! Aborting upload to server.");
+            Debug.LogWarning("[Warning] local character ref missing! Aborting upload to server.");
             return;
         }
 
