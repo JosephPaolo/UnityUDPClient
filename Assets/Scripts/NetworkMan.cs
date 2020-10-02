@@ -20,6 +20,8 @@ public class NetworkMan : MonoBehaviour {
     //[SerializeField] private Material cubeColorMatRef;
     //[SerializeField] private GameObject localClientCubeRef;
     [SerializeField] private Transform localClientCharacterRef;
+    [SerializeField] private Transform spawnLocation;
+
     [SerializeField] private GameObject clientCubePrefab;
 
     private Dictionary<string, GameObject> playerReferences;
@@ -27,6 +29,8 @@ public class NetworkMan : MonoBehaviour {
 
     public Message latestMessage;
     public GameState lastestGameState;
+    private string localIP;
+    private string localPort;
 
     //TODO client dictionary
 
@@ -62,7 +66,7 @@ public class NetworkMan : MonoBehaviour {
         InvokeRepeating("RoutinePing", 1, 1); // Sends 1 heartbeat message to server every 1 second.
 
         if (bDebug){ Debug.Log("[Notice] Routinely sending Coordinates.");}
-        InvokeRepeating("UploadLocalClientPosition", 0.033f, 1); //Send 1 coordinate message to server every 0.033 second. Essentially 30 times per second.
+        InvokeRepeating("UploadLocalClientPosition", 1, 0.033f); //Send 1 coordinate message to server every 0.033 second. Essentially 30 times per second.
     }
 
     void OnDestroy() {
@@ -112,10 +116,18 @@ public class NetworkMan : MonoBehaviour {
     }
 
     [Serializable]
+    public class VectorThree {
+        public float x = 0;
+        public float y = 0;
+        public float z = 0;
+    }
+
+    [Serializable]
     public class Player {
         public string ip;
         public string port;
-        public Coordinates position;  
+        public VectorThree position;  
+        //public VectorThree orientation;  
     }
 
     [Serializable]
@@ -148,32 +160,6 @@ public class NetworkMan : MonoBehaviour {
         dataQueue.Enqueue(returnData);
         if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Received Data: " + returnData); }
 
-        //latestMessage = JsonUtility.FromJson<Message>(returnData);
-        //try{
-        //    switch(latestMessage.cmd){
-        //        case commands.NEW_CLIENT:
-        //            if (bDebug){ Debug.Log("[Notice] Client received command: NEW_CLIENT!");}
-        //            break;
-        //        case commands.CLIENT_LIST:
-        //            if (bDebug){ Debug.Log("[Notice] Client received command: CLIENT_LIST!");}
-        //            break;
-        //        case commands.DROP_CLIENT:
-        //            if (bDebug){ Debug.Log("[Notice] Client received command: DROP_CLIENT!");}
-        //            break;
-        //        case commands.UPDATE:
-        //            if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Client received command: UPDATE"); }
-        //            lastestGameState = JsonUtility.FromJson<GameState>(returnData);
-        //            break;
-        //        default:
-        //            Debug.LogError("[Error] Client received invalid command enum from message.");
-        //            break;
-        //    }
-        //}
-        //catch (Exception e){
-        //    Debug.LogError("[Exception] Failed to receive message from server. " + e.ToString());
-        //    //Debug.Log(e.ToString());
-        //}
-
         // schedule the next receive operation once reading is done:
         socket.BeginReceive(new AsyncCallback(OnReceived), socket);
     }
@@ -187,8 +173,6 @@ public class NetworkMan : MonoBehaviour {
 
         //Cube spawn locations are randomized per client. The positions will not be the same in each client because the positions aren't tracked by the server.
 
-        Vector3 spawnlocation = Vector3.zero; 
-
         //Only process this function if there is data in queue
         if (dataQueue.Count <= 0) {
             return;
@@ -200,9 +184,9 @@ public class NetworkMan : MonoBehaviour {
 
             if (bDebug){ Debug.Log("[Notice] Client received command: NEW_CLIENT");}
             newPlayer = JsonUtility.FromJson<NewPlayer>(dataQueue.Peek()).player;
-            spawnlocation = new Vector3 (UnityEngine.Random.Range(-10.0f, 10.0f),UnityEngine.Random.Range(-4.0f, 4.0f),UnityEngine.Random.Range(4.0f, 24.0f));
-            newObj = Instantiate(clientCubePrefab, spawnlocation, Quaternion.identity);
-            newObj.GetComponent<RemotePlayerData>().id = newPlayer.ip + ":" + newPlayer.port;
+            newObj = Instantiate(clientCubePrefab, spawnLocation.position, Quaternion.identity);
+            newObj.GetComponent<RemotePlayerData>().ip = newPlayer.ip;
+            newObj.GetComponent<RemotePlayerData>().port = newPlayer.port;
             playerReferences.Add(newPlayer.ip + ":" + newPlayer.port, newObj);
             dataQueue.Dequeue();
             Debug.Log("[Notice] Player " + newPlayer.ip + ":" + newPlayer.port + " has entered the game.");
@@ -211,6 +195,9 @@ public class NetworkMan : MonoBehaviour {
                 if ( (newPlayer.ip + ":" + newPlayer.port) == udp.Client.LocalEndPoint.ToString()) { //If recently spawned player is local player's cube
                     Debug.Log("[Notice] Client " + newPlayer.ip + ":" + newPlayer.port + " is local client player; Saving character reference...");
                     localClientCharacterRef = newObj.transform; //Add reference
+                    localClientCharacterRef.gameObject.AddComponent<SimpleCharController>(); //Adding controller
+                    localIP = newPlayer.ip;
+                    localPort = newPlayer.port;
                 }
             }
         }
@@ -218,7 +205,6 @@ public class NetworkMan : MonoBehaviour {
         else if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd == commands.CLIENT_LIST) {
             GameObject otherObj;
             GameState connectedPlayers = JsonUtility.FromJson<GameState>(dataQueue.Peek());
-
             
             if (bDebug) { Debug.Log("[Notice] Client received command: CLIENT_LIST"); }
             foreach (Player targetPlayer in connectedPlayers.players) {
@@ -228,9 +214,9 @@ public class NetworkMan : MonoBehaviour {
 
                 }
                 else {
-                    spawnlocation = new Vector3 (UnityEngine.Random.Range(-10.0f, 10.0f),UnityEngine.Random.Range(-4.0f, 4.0f),UnityEngine.Random.Range(4.0f, 24.0f));
-                    otherObj = Instantiate(clientCubePrefab, spawnlocation, Quaternion.identity);
-                    otherObj.GetComponent<RemotePlayerData>().id = targetPlayer.ip + ":" + targetPlayer.port;
+                    otherObj = Instantiate(clientCubePrefab, spawnLocation.position, Quaternion.identity);
+                    otherObj.GetComponent<RemotePlayerData>().ip = targetPlayer.ip;
+                    otherObj.GetComponent<RemotePlayerData>().port = targetPlayer.port;
                     playerReferences.Add(targetPlayer.ip + ":" + targetPlayer.port, otherObj);
                     if (bDebug) { Debug.Log("[Notice] Implemented connected client to game: " + targetPlayer.ip + ":" + targetPlayer.port); }
                 }
@@ -245,7 +231,7 @@ public class NetworkMan : MonoBehaviour {
 
     }
 
-    //The client loops through all the currently connected players and updates the player game object properties (color, network id). (Implementation Missing) 
+    //The client loops through all the currently connected players and updates the player game object properties.
     void UpdatePlayers() {
         //Only process this function if there is data in queue
         if (dataQueue.Count <= 0) {
@@ -255,11 +241,25 @@ public class NetworkMan : MonoBehaviour {
         if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd != commands.UPDATE) {
             return;
         }
+        if (bDebug && bVerboseDebug) { Debug.Log("[Routine] Received updated client list"); }
 
         lastestGameState = JsonUtility.FromJson<GameState>(dataQueue.Peek());
 
         foreach (Player player in lastestGameState.players) {
-            //playerReferences[player.id].GetComponent<Renderer>().material.color = new Color (player.color.R,player.color.G,player.color.B,1);
+            string playerKey = player.ip + ":" + player.port;
+
+            //Do not update local character
+            if (player.ip == localIP && player.port == localPort) {
+                continue;
+            }
+
+            if (playerReferences.ContainsKey(playerKey)) {
+                playerReferences[playerKey].transform.position = new Vector3(player.position.x,player.position.y,player.position.z);
+                if (bDebug && bVerboseDebug) { Debug.Log("[Routine] Updated position of client " + playerKey + " to " + playerReferences[playerKey].transform.position); }
+            }
+            else {
+                Debug.LogError("[Error] Received player address, " + playerKey + ", key do not match any key in local client's reference dictionary. Skipping address...");
+            }
         }
         dataQueue.Dequeue();
     }
@@ -281,11 +281,11 @@ public class NetworkMan : MonoBehaviour {
         Debug.Log("[Notice] Player " + droppedPlayer.ip + ":" + droppedPlayer.port + " has left the game.");
 
         if (playerReferences.ContainsKey(droppedPlayer.ip + ":" + droppedPlayer.port)) {
-            Destroy(playerReferences[droppedPlayer.ip + ":" + droppedPlayer.port]); // Destroy the dropped player’s game object. UNTESTED
-            playerReferences.Remove(droppedPlayer.ip + ":" + droppedPlayer.port); //Remove the dropped player's entry from the dictionary of currently connected players. UNTESTED
+            Destroy(playerReferences[droppedPlayer.ip + ":" + droppedPlayer.port]); // Destroy the dropped player’s game object. 
+            playerReferences.Remove(droppedPlayer.ip + ":" + droppedPlayer.port); //Remove the dropped player's entry from the dictionary of currently connected players. 
         }
         else {
-            Debug.LogError("[Error] Invalid key for player address. Skipping Operation.");
+            Debug.LogError("[Error] Invalid key for player address. Skipping Operation...");
         }
 
         dataQueue.Dequeue();

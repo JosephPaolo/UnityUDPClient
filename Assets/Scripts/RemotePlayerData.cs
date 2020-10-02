@@ -8,5 +8,6 @@ using System.Collections.Generic;
 using UnityEngine;
 
 public class RemotePlayerData : MonoBehaviour{
-    public string id;
+    public string ip;
+    public string port;
 }
