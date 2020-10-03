@@ -32,8 +32,6 @@ public class NetworkMan : MonoBehaviour {
     private string localIP;
     private string localPort;
 
-    //TODO client dictionary
-
     // Start is called before the first frame update
     void Start() {
         string msgJson;
@@ -66,7 +64,7 @@ public class NetworkMan : MonoBehaviour {
         InvokeRepeating("RoutinePing", 1, 1); // Sends 1 heartbeat message to server every 1 second.
 
         if (bDebug){ Debug.Log("[Notice] Routinely sending Coordinates.");}
-        InvokeRepeating("UploadLocalClientPosition", 1, 0.033f); //Send 1 coordinate message to server every 0.033 second. Essentially 30 times per second.
+        InvokeRepeating("UploadLocalClientData", 1, 0.033f); //Send 1 coordinate message to server every 0.033 second. Essentially 30 times per second.
     }
 
     void OnDestroy() {
@@ -87,7 +85,7 @@ public class NetworkMan : MonoBehaviour {
         CONNECT,
         PING,
         MESSAGE,
-        COORDS,
+        PLAYERDATA,
         HEARTBEAT
     };
 
@@ -108,12 +106,19 @@ public class NetworkMan : MonoBehaviour {
     }
 
     [Serializable]
-    public class Coordinates {
-        public float x = 0;
-        public float y = 0;
-        public float z = 0;
-        public flag flag = flag.COORDS;
+    public class PlayerDataToServer {
+        public VectorThree position;
+        public VectorThree orientation;
+        public flag flag = flag.PLAYERDATA;
     }
+
+    //[Serializable]
+    //public class Coordinates {
+    //    public float x = 0;
+    //    public float y = 0;
+    //    public float z = 0;
+    //    public flag flag = flag.COORDS;
+    //}
 
     [Serializable]
     public class VectorThree {
@@ -127,7 +132,7 @@ public class NetworkMan : MonoBehaviour {
         public string ip;
         public string port;
         public VectorThree position;  
-        //public VectorThree orientation;  
+        public VectorThree orientation;  
     }
 
     [Serializable]
@@ -170,8 +175,6 @@ public class NetworkMan : MonoBehaviour {
     //The cube should contain a script that holds the network id of this player. (Implementation Missing)
     void SpawnPlayers() {
         //if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Spawning Players."); }
-
-        //Cube spawn locations are randomized per client. The positions will not be the same in each client because the positions aren't tracked by the server.
 
         //Only process this function if there is data in queue
         if (dataQueue.Count <= 0) {
@@ -255,7 +258,9 @@ public class NetworkMan : MonoBehaviour {
 
             if (playerReferences.ContainsKey(playerKey)) {
                 playerReferences[playerKey].transform.position = new Vector3(player.position.x,player.position.y,player.position.z);
+                playerReferences[playerKey].transform.localEulerAngles = new Vector3(player.orientation.x,player.orientation.y,player.orientation.z);
                 if (bDebug && bVerboseDebug) { Debug.Log("[Routine] Updated position of client " + playerKey + " to " + playerReferences[playerKey].transform.position); }
+                if (bDebug && bVerboseDebug) { Debug.Log("[Routine] Updated orientation of client " + playerKey + " to " + playerReferences[playerKey].transform.localEulerAngles); }
             }
             else {
                 Debug.LogError("[Error] Received player address, " + playerKey + ", key do not match any key in local client's reference dictionary. Skipping address...");
@@ -318,8 +323,8 @@ public class NetworkMan : MonoBehaviour {
         udp.Send(sendBytes, sendBytes.Length);
     }
 
-    //Routinely send the position of local client's character to the server
-    void UploadLocalClientPosition() {
+    //Routinely send the position and orientation of local client's character to the server
+    void UploadLocalClientData() {
 
         if (!localClientCharacterRef) {
             Debug.LogWarning("[Warning] local character ref missing! Aborting upload to server.");
@@ -327,12 +332,20 @@ public class NetworkMan : MonoBehaviour {
         }
 
         if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Sending message to server: coordinates " + localClientCharacterRef.position); }
-        Coordinates initialPosition = new Coordinates();
-        initialPosition.x = localClientCharacterRef.position.x;
-        initialPosition.y = localClientCharacterRef.position.y;
-        initialPosition.z = localClientCharacterRef.position.z;
 
-        string posJson = JsonUtility.ToJson(initialPosition);
+        PlayerDataToServer initialData = new PlayerDataToServer();
+        initialData.position = new VectorThree();
+        initialData.orientation = new VectorThree();
+
+        initialData.position.x = localClientCharacterRef.position.x;
+        initialData.position.y = localClientCharacterRef.position.y;
+        initialData.position.z = localClientCharacterRef.position.z;
+
+        initialData.orientation.x = localClientCharacterRef.localEulerAngles.x;
+        initialData.orientation.y = localClientCharacterRef.localEulerAngles.y;
+        initialData.orientation.z = localClientCharacterRef.localEulerAngles.z;
+
+        string posJson = JsonUtility.ToJson(initialData);
         Byte[] sendBytes = Encoding.ASCII.GetBytes(posJson);
         udp.Send(sendBytes, sendBytes.Length);
     }
