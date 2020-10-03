@@ -29,8 +29,8 @@ public class NetworkMan : MonoBehaviour {
 
     public Message latestMessage;
     public GameState lastestGameState;
-    private string localIP;
-    private string localPort;
+    [SerializeField] private string localIP;
+    [SerializeField] private string localPort;
 
     // Start is called before the first frame update
     void Start() {
@@ -45,9 +45,9 @@ public class NetworkMan : MonoBehaviour {
         dataQueue = new Queue<string>();
 
         if (bDebug){ Debug.Log("[Notice] Client connecting to Server...");}
-        udp.Connect("localhost",12345);
+        udp.Connect("3.19.185.97",12345);
 
-        //Debug.Log("udp.ToString(): " + udp.Client.LocalEndPoint);
+        Debug.Log("udp.Client.LocalEndPoint: " + udp.Client.LocalEndPoint);
 
         //Send flag 'connect' to server
         FlagToServer connectFlag = new FlagToServer();
@@ -77,7 +77,8 @@ public class NetworkMan : MonoBehaviour {
         UPDATE,
         DROP_CLIENT,
         CLIENT_LIST,
-        PONG
+        PONG,
+        PUBLIC_ADDRESS
     };
 
     public enum flag {
@@ -146,6 +147,12 @@ public class NetworkMan : MonoBehaviour {
     }
 
     [Serializable]
+    public class PlayerAddress {
+        public string ip;
+        public string port;
+    }
+
+    [Serializable]
     public class GameState {
         public Player[] players;
     }
@@ -169,10 +176,10 @@ public class NetworkMan : MonoBehaviour {
         socket.BeginReceive(new AsyncCallback(OnReceived), socket);
     }
 
-    //When a new player is connected, the client adds the details of this player into a list of currently connected players. (Implementation Missing)
+    //When a new player is connected, the client adds the details of this player into a list of currently connected players. 
 
     //When a new player is connected, the client spawns a cube to represent the newly connected player. 
-    //The cube should contain a script that holds the network id of this player. (Implementation Missing)
+    //The cube should contain a script that holds the network id of this player. 
     void SpawnPlayers() {
         //if (bDebug && bVerboseDebug){ Debug.Log("[Routine] Spawning Players."); }
 
@@ -180,6 +187,7 @@ public class NetworkMan : MonoBehaviour {
         if (dataQueue.Count <= 0) {
             return;
         }
+
         //When a new player is connected, the client adds the details of this player into a list of currently connected players.
         if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd == commands.NEW_CLIENT) {
             GameObject newObj;
@@ -195,12 +203,10 @@ public class NetworkMan : MonoBehaviour {
             Debug.Log("[Notice] Player " + newPlayer.ip + ":" + newPlayer.port + " has entered the game.");
 
             if (!localClientCharacterRef) { //If reference to local player cube is not present
-                if ( (newPlayer.ip + ":" + newPlayer.port) == udp.Client.LocalEndPoint.ToString()) { //If recently spawned player is local player's cube
+                if (newPlayer.ip == localIP && newPlayer.port == localPort) { //If recently spawned player is local player's cube
                     Debug.Log("[Notice] Client " + newPlayer.ip + ":" + newPlayer.port + " is local client player; Saving character reference...");
                     localClientCharacterRef = newObj.transform; //Add reference
                     localClientCharacterRef.gameObject.AddComponent<SimpleCharController>(); //Adding controller
-                    localIP = newPlayer.ip;
-                    localPort = newPlayer.port;
                 }
             }
         }
@@ -230,6 +236,14 @@ public class NetworkMan : MonoBehaviour {
             foreach (Player targetPlayer in connectedPlayers.players) {
                 Debug.Log("    " + targetPlayer.ip + ":" + targetPlayer.port);
             }
+        }
+        //Retrieves public address
+        else if (JsonUtility.FromJson<Message>(dataQueue.Peek()).cmd == commands.PUBLIC_ADDRESS) {
+            PlayerAddress addressHolder = JsonUtility.FromJson<PlayerAddress>(dataQueue.Peek());
+            if (bDebug) { Debug.Log("[Notice] Client received command: PUBLIC_ADDRESS"); }
+            localIP = addressHolder.ip;
+            localPort = addressHolder.port;
+            dataQueue.Dequeue();
         }
 
     }
@@ -263,7 +277,7 @@ public class NetworkMan : MonoBehaviour {
                 if (bDebug && bVerboseDebug) { Debug.Log("[Routine] Updated orientation of client " + playerKey + " to " + playerReferences[playerKey].transform.localEulerAngles); }
             }
             else {
-                Debug.LogError("[Error] Received player address, " + playerKey + ", key do not match any key in local client's reference dictionary. Skipping address...");
+                Debug.LogWarning("[Warning] Received player address, " + playerKey + ", key do not match any key in local client's reference dictionary. Skipping address...");
             }
         }
         dataQueue.Dequeue();
